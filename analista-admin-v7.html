@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Señales VIP</title>
+
+<!-- Firebase SDK -->
+<script type="module">
+
+// Firebase config embebida permanentemente
+(function(){
+  var cfg = {'apiKey': 'AIzaSyBSViGbbUYnx3K3MBOdnDSY5q5GLDZlPgU', 'authDomain': 'senales-vip-ia.firebaseapp.com', 'projectId': 'senales-vip-ia', 'storageBucket': 'senales-vip-ia.appspot.com', 'messagingSenderId': '198183729033', 'appId': '1:198183729033:web:9e98d5139a3ceb64361358'};
+  localStorage.setItem('svip_firebase_config', JSON.stringify(cfg));
+})();
+
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, deleteDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+
+// ════ CONFIGURACIÓN FIREBASE ════
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBSViGbbUYnx3K3MBOdnDSY5q5GLDZlPgU",
+  authDomain: "senales-vip-ia.firebaseapp.com",
+  projectId: "senales-vip-ia",
+  storageBucket: "senales-vip-ia.appspot.com",
+  messagingSenderId: "198183729033",
+  appId: "1:198183729033:web:9e98d5139a3ceb64361358"
+};
+
+const app = initializeApp(FIREBASE_CONFIG);
+const db  = getFirestore(app);
+
+// ════ HELPERS ════
+const fDoc  = (path, id)          => doc(db, path, id);
+const fSet  = (path, id, data)    => setDoc(fDoc(path, id), { ...data, updatedAt: serverTimestamp() });
+const fGet  = (path, id)          => getDoc(fDoc(path, id));
+const fDel  = (path, id)          => deleteDoc(fDoc(path, id));
+const fCol  = (path)              => getDocs(collection(db, path));
+
+// ════ DB OPERATIONS ════
+// CÓDIGOS
+async function dbSaveCode(code, data) {
+  await setDoc(fDoc('codes', code), { ...data, updatedAt: serverTimestamp() });
+}
+async function dbGetAllCodes() {
+  const snap = await fCol('codes');
+  return snap.docs.map(d => ({ ...d.data(), code: d.id }));
+}
+async function dbDeleteCode(code) { await fDel('codes', code); }
+async function dbUpdateCode(code, data) { await updateDoc(fDoc('codes', code), data); }
+
+// CONFIG (apikey, brand, logo, proveedor)
+async function dbSetConfig(key, value) { await setDoc(fDoc('config', key), { value, updatedAt: serverTimestamp() }); }
+async function dbGetConfig(key) {
+  const d = await fGet('config', key);
+  return d.exists() ? d.data().value : null;
+}
+
+// TICKER
+async function dbSaveTicker(items) { await fSet('config', 'ticker', { items }); }
+async function dbGetTicker() {
+  const d = await fGet('config', 'ticker');
+  return d.exists() ? (d.data().items || []) : [];
+}
+
+// PICKS
+async function dbSavePicks(picks) { await fSet('config', 'picks', { picks }); }
+async function dbGetPicks() {
+  const d = await fGet('config', 'picks');
+  return d.exists() ? (d.data().picks || []) : [];
+}
+
+// LIGAS
+async function dbSaveLeagues(leagues) { await fSet('config', 'leagues', { leagues }); }
+
+// ENCUESTAS
+async function dbSaveEncuesta(enc) { await fSet('encuestas', enc.id, enc); }
+async function dbGetEncuestas() {
+  const snap = await fCol('encuestas');
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }));
+}
+async function dbDeleteEncuesta(id) { await fDel('encuestas', id); }
+async function dbUpdateEncuesta(id, data) { await updateDoc(fDoc('encuestas', id), data); }
+
+// ════ EXPOSE TO WINDOW ════
+window.DB = {
+  saveCode: dbSaveCode, getAllCodes: dbGetAllCodes, deleteCode: dbDeleteCode, updateCode: dbUpdateCode,
+  setConfig: dbSetConfig, getConfig: dbGetConfig,
+  saveTicker: dbSaveTicker, getTicker: dbGetTicker,
+  savePicks: dbSavePicks, getPicks: dbGetPicks,
+  saveLeagues: dbSaveLeagues,
+  saveEncuesta: dbSaveEncuesta, getEncuestas: dbGetEncuestas, deleteEncuesta: dbDeleteEncuesta, updateEncuesta: dbUpdateEncuesta,
+};
+window.dispatchEvent(new Event('db-ready'));
+</script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap');
+:root {
+  --bg:#0A0A0F; --bg2:#111118; --bg3:#18181F; --bg4:#202029; --bg5:#2A2A35;
+  --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+  --oro:#C9A84C; --oro2:#E8C96A;
+  --verde:#22C55E; --rojo:#EF4444; --azul:#3B82F6; --purp:#8B5CF6; --cian:#06B6D4;
+  --tx:#F1F1F3; --tx2:#9999B2; --tx3:#55556A;
+  --mono:'JetBrains Mono',monospace;
+  --r-sm:8px; --r-md:12px; --r-lg:16px; --r-xl:20px;
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--tx);font-family:'Inter',system-ui,sans-serif;min-height:100vh;font-size:14px;-webkit-font-smoothing:antialiased;}
+
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;}
+#loginScreen::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 60% 50% at 50% -5%,rgba(201,168,76,.06) 0%,transparent 70%);pointer-events:none;}
+.lcard{background:var(--bg2);border:1px solid var(--line2);border-radius:var(--r-xl);padding:36px 28px;width:100%;max-width:360px;box-shadow:0 40px 80px rgba(0,0,0,.6);position:relative;}
+.llogo{width:64px;height:64px;border-radius:var(--r-md);margin:0 auto 14px;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 0 24px rgba(201,168,76,.3);}
+.llogo img{width:100%;height:100%;object-fit:cover;}
+.ltitle{font-size:18px;font-weight:700;color:var(--tx);text-align:center;margin-bottom:3px;}
+.lsub{font-size:11px;color:var(--tx3);text-align:center;margin-bottom:20px;}
+.lfb-status{display:flex;align-items:center;gap:6px;justify-content:center;font-size:11px;margin-bottom:16px;padding:8px 12px;border-radius:var(--r-sm);}
+.lfb-status.ok{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.2);color:var(--verde);}
+.lfb-status.err{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);color:var(--rojo);}
+.lfb-status.load{background:var(--bg3);border:1px solid var(--line);color:var(--tx3);}
+.lfb-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+.llabel{font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:8px;}
+.lpin{display:block;width:100%;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-md);color:var(--oro2);font-family:var(--mono);font-size:24px;font-weight:700;text-align:center;padding:14px;letter-spacing:10px;outline:none;margin-bottom:12px;transition:border-color .18s,box-shadow .18s;}
+.lpin:focus{border-color:var(--oro);box-shadow:0 0 0 3px rgba(201,168,76,.1);}
+.lbtn{display:block;width:100%;background:linear-gradient(135deg,var(--oro),var(--oro2));color:#0A0A0F;border:none;border-radius:var(--r-md);font-family:'Inter',sans-serif;font-size:14px;font-weight:700;padding:13px;cursor:pointer;transition:opacity .18s;}
+.lbtn:hover{opacity:.9;} .lerr{display:none;margin-top:10px;padding:10px 12px;background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:var(--r-sm);color:var(--rojo);font-size:12px;text-align:center;}
+
+/* HEADER */
+header{background:var(--bg2);border-bottom:1px solid var(--line);padding:0 18px;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;}
+.hbrand{display:flex;align-items:center;gap:10px;}
+.hlogo{width:34px;height:34px;border-radius:var(--r-sm);overflow:hidden;flex-shrink:0;}
+.hlogo img{width:100%;height:100%;object-fit:cover;}
+.hname{font-size:14px;font-weight:700;color:var(--tx);letter-spacing:-.2px;}
+.hsub{font-size:10px;color:var(--tx3);}
+.fb-badge{display:flex;align-items:center;gap:5px;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.18);color:var(--azul);font-size:10px;font-weight:600;padding:4px 10px;border-radius:20px;}
+.fb-badge svg{width:10px;height:10px;}
+.fb-badge.ok{background:rgba(34,197,94,.06);border-color:rgba(34,197,94,.18);color:var(--verde);}
+
+/* TABS */
+.tabs{display:flex;background:var(--bg2);border-bottom:1px solid var(--line);overflow-x:auto;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{display:flex;align-items:center;gap:6px;flex-shrink:0;padding:13px 16px;font-size:11px;font-weight:600;letter-spacing:.3px;color:var(--tx3);cursor:pointer;border-bottom:2px solid transparent;transition:all .18s;white-space:nowrap;}
+.tab svg{width:13px;height:13px;} .tab.active{color:var(--oro);border-bottom-color:var(--oro);} .tab:hover:not(.active){color:var(--tx2);}
+.panel{display:none;} .panel.active{display:block;}
+.main{max-width:860px;margin:0 auto;padding:20px 14px;}
+
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--line);border-radius:var(--r-lg);padding:18px;margin-bottom:14px;}
+.card-title{font-size:13px;font-weight:700;color:var(--tx);display:flex;align-items:center;gap:8px;margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line);}
+.card-title svg{width:14px;height:14px;color:var(--oro);flex-shrink:0;}
+.card-sub{font-size:11px;color:var(--tx3);margin-bottom:14px;line-height:1.6;}
+
+/* KPI */
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px;}
+@media(min-width:480px){.kpis{grid-template-columns:repeat(4,1fr);}}
+.kpi{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 12px;}
+.kpi-n{font-family:var(--mono);font-size:26px;font-weight:700;line-height:1;margin-bottom:4px;}
+.kpi-l{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--tx3);}
+.c-o{color:var(--oro);} .c-g{color:var(--verde);} .c-r{color:var(--rojo);} .c-gr{color:var(--tx2);}
+
+/* FORM */
+.fg{margin-bottom:0;}
+.fg label{display:block;font-size:11px;font-weight:600;color:var(--tx2);margin-bottom:5px;}
+.fg input,.fg select,.fg textarea{width:100%;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-family:'Inter',sans-serif;font-size:13px;padding:9px 11px;outline:none;transition:border-color .18s;}
+.fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--oro);}
+.fg textarea{resize:vertical;}
+.frow{display:grid;gap:10px;margin-bottom:10px;}
+.frow-2{grid-template-columns:1fr 1fr;} .frow-3{grid-template-columns:1fr 1fr 1fr;}
+@media(max-width:540px){.frow-2,.frow-3{grid-template-columns:1fr;}}
+
+/* BUTTONS */
+.btn-primary{width:100%;background:linear-gradient(135deg,var(--azul),var(--purp));color:#fff;border:none;border-radius:var(--r-md);font-family:'Inter',sans-serif;font-size:13px;font-weight:700;padding:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;transition:opacity .18s;}
+.btn-primary svg{width:14px;height:14px;} .btn-primary:hover{opacity:.9;}
+.btn-save{display:inline-flex;align-items:center;gap:5px;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);color:var(--verde);border-radius:var(--r-sm);font-family:'Inter',sans-serif;font-size:12px;font-weight:700;padding:8px 13px;cursor:pointer;white-space:nowrap;transition:all .18s;}
+.btn-save svg{width:12px;height:12px;} .btn-save:hover{background:rgba(34,197,94,.15);}
+.btn-sm{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid var(--line2);color:var(--tx2);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;padding:6px 11px;border-radius:var(--r-sm);cursor:pointer;white-space:nowrap;transition:all .18s;}
+.btn-sm svg{width:11px;height:11px;} .btn-sm:hover{color:var(--tx);background:var(--bg3);}
+.btn-danger{display:inline-flex;align-items:center;gap:5px;background:transparent;border:1px solid rgba(239,68,68,.25);color:var(--rojo);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;padding:6px 11px;border-radius:var(--r-sm);cursor:pointer;transition:all .18s;}
+.btn-danger:hover{background:rgba(239,68,68,.07);}
+.btn-oro{display:inline-flex;align-items:center;gap:5px;background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:var(--oro2);font-family:'Inter',sans-serif;font-size:11px;font-weight:700;padding:6px 12px;border-radius:var(--r-sm);cursor:pointer;white-space:nowrap;transition:all .18s;}
+.btn-oro:hover{background:rgba(201,168,76,.15);}
+
+/* TABLE */
+.tbl-wrap{overflow-x:auto;}
+.tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:520px;}
+.tbl th{background:rgba(255,255,255,.025);color:var(--tx3);font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;padding:10px 12px;text-align:left;border-bottom:1px solid var(--line2);}
+.tbl td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.tbl tr:last-child td{border-bottom:none;} .tbl tr:hover td{background:rgba(255,255,255,.015);}
+.code-chip{font-family:var(--mono);font-size:13px;font-weight:700;color:var(--oro2);letter-spacing:2px;}
+.st-row{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;}
+.sdot{width:6px;height:6px;border-radius:50%;flex-shrink:0;}
+.sd-a{background:var(--verde);box-shadow:0 0 5px var(--verde);} .sd-e{background:var(--rojo);} .sd-r{background:var(--tx3);}
+.revoke-btn{background:transparent;border:1px solid var(--line2);color:var(--tx3);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px;cursor:pointer;font-family:'Inter',sans-serif;transition:all .18s;}
+.revoke-btn:hover{border-color:rgba(239,68,68,.35);color:var(--rojo);}
+.add-credit-btn{background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);color:var(--azul);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px;cursor:pointer;font-family:'Inter',sans-serif;margin-left:4px;transition:all .18s;}
+.tbl-empty{text-align:center;padding:32px;color:var(--tx3);font-size:13px;}
+
+/* CODE BOX */
+.code-box{display:none;margin-top:14px;background:var(--bg3);border:1px solid rgba(201,168,76,.2);border-radius:var(--r-md);padding:16px 18px;}
+.code-box.show{display:block;}
+.code-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--oro2);letter-spacing:10px;text-align:center;background:rgba(201,168,76,.04);border:2px dashed rgba(201,168,76,.18);border-radius:var(--r-sm);padding:16px;margin-bottom:12px;}
+.code-info{font-size:12px;color:var(--tx2);line-height:1.75;background:var(--bg4);padding:10px 12px;border-radius:var(--r-sm);margin-bottom:12px;}
+.code-info strong{color:var(--tx);}
+.code-btns{display:flex;gap:8px;}
+.code-copy{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.2);color:var(--oro2);font-family:'Inter',sans-serif;font-size:12px;font-weight:700;padding:10px;border-radius:var(--r-sm);cursor:pointer;transition:background .18s;}
+.code-copy:hover{background:rgba(201,168,76,.12);}
+.code-wa{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:var(--verde);font-family:'Inter',sans-serif;font-size:12px;font-weight:700;padding:10px;border-radius:var(--r-sm);cursor:pointer;text-decoration:none;}
+.code-wa:hover{background:rgba(34,197,94,.12);}
+
+/* PLANS */
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-bottom:14px;}
+.plan-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 15px;}
+.pc-name{font-size:14px;font-weight:700;margin-bottom:2px;}
+.pc-price{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--oro2);margin-bottom:8px;}
+.pc-detail{font-size:11px;color:var(--tx2);line-height:1.65;margin-bottom:10px;}
+
+/* TICKER */
+.ticker-items-list{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;}
+.ticker-item-row{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;}
+.ti-type select{background:var(--bg4);border:1px solid var(--line);border-radius:6px;color:var(--tx2);font-size:10px;padding:4px 7px;outline:none;font-family:'Inter',sans-serif;}
+.ti-text{flex:1;background:transparent;border:none;color:var(--tx);font-family:'Inter',sans-serif;font-size:12px;outline:none;}
+.ti-del{background:none;border:none;color:var(--tx3);cursor:pointer;padding:3px;transition:color .18s;}
+.ti-del:hover{color:var(--rojo);} .ti-del svg{width:13px;height:13px;}
+.toggle-sw{position:relative;width:32px;height:18px;cursor:pointer;flex-shrink:0;}
+.toggle-sw input{opacity:0;width:0;height:0;}
+.sw-track{position:absolute;inset:0;background:var(--bg4);border-radius:20px;transition:background .2s;}
+.toggle-sw input:checked + .sw-track{background:var(--verde);}
+.sw-knob{position:absolute;top:2px;left:2px;width:14px;height:14px;background:#fff;border-radius:50%;transition:transform .2s;}
+.toggle-sw input:checked ~ .sw-knob{transform:translateX(14px);}
+.ticker-preview{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:8px 12px;overflow:hidden;height:30px;margin-bottom:12px;}
+.tp-inner{white-space:nowrap;font-size:11px;color:var(--tx2);animation:tickPrev 20s linear infinite;display:inline-block;}
+@keyframes tickPrev{0%{transform:translateX(100%)}100%{transform:translateX(-100%)}}
+
+/* PICKS */
+.pick-config{display:flex;flex-direction:column;gap:6px;}
+.pick-row{display:flex;align-items:flex-start;gap:10px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;}
+.pr-num{font-family:var(--mono);font-size:11px;color:var(--tx3);flex-shrink:0;margin-top:2px;}
+.pr-fields{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+.pr-fields input{background:var(--bg4);border:1px solid var(--line);border-radius:6px;color:var(--tx);font-size:11px;padding:6px 8px;outline:none;font-family:'Inter',sans-serif;}
+.pr-del{background:none;border:none;color:var(--tx3);cursor:pointer;flex-shrink:0;}
+.pr-del:hover{color:var(--rojo);} .pr-del svg{width:13px;height:13px;}
+
+/* LIGAS GRID */
+.leagues-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;margin-bottom:14px;}
+.league-row{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:9px 12px;transition:border-color .18s;}
+.league-row.enabled{border-color:rgba(34,197,94,.2);}
+.lr-name{flex:1;font-size:12px;font-weight:500;color:var(--tx2);}
+
+/* ENCUESTAS */
+.enc-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:12px 14px;margin-bottom:7px;}
+.enc-bar-row{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.enc-bar-outer{flex:1;height:5px;background:var(--bg4);border-radius:5px;overflow:hidden;}
+.enc-bar-inner{height:100%;border-radius:5px;background:var(--purp);transition:width .4s;}
+.enc-bar-inner.winner{background:var(--verde);}
+
+/* API KEY */
+.apikey-row{display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);padding:9px 12px;margin-bottom:8px;}
+.apikey-field{flex:1;background:transparent;border:none;color:var(--oro2);font-family:var(--mono);font-size:13px;font-weight:600;outline:none;min-width:0;}
+.eye-btn{background:var(--bg4);border:1px solid var(--line);color:var(--tx2);width:28px;height:28px;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.eye-btn svg{width:13px;height:13px;}
+.prov-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;}
+.prov-card{border:2px solid var(--line);border-radius:var(--r-md);padding:12px 14px;cursor:pointer;transition:all .18s;}
+.prov-card.active{border-color:rgba(201,168,76,.45);background:rgba(201,168,76,.04);}
+.prov-name{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:2px;}
+.prov-sub{font-size:9px;color:var(--tx3);}
+
+/* TOAST */
+.toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--bg2);border:1px solid var(--line2);color:var(--tx);font-size:12px;font-weight:600;padding:10px 20px;border-radius:20px;opacity:0;transition:all .25s;z-index:9999;pointer-events:none;white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* PLAN CARDS */
+.plans-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:10px;margin-bottom:14px;}
+.plan-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:14px 15px;position:relative;transition:border-color .18s;}
+.plan-card.featured{border-color:rgba(201,168,76,.25);background:rgba(201,168,76,.03);}
+.pc-name{font-size:15px;font-weight:700;margin-bottom:2px;letter-spacing:-.1px;}
+.pc-price{font-family:var(--mono);font-size:18px;font-weight:700;color:var(--oro2);margin-bottom:6px;}
+.pc-detail{font-size:11px;color:var(--tx2);line-height:1.65;margin-bottom:10px;}
+.pc-detail div{display:flex;align-items:center;gap:6px;margin-bottom:3px;}
+.pc-detail svg{width:10px;height:10px;color:var(--verde);flex-shrink:0;}
+.pc-actions{display:flex;gap:6px;}
+.pc-badge{position:absolute;top:10px;right:10px;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:2px 7px;border-radius:4px;}
+.pcb-recommended{background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.25);color:var(--oro2);}
+/* PACKS */
+.packs-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:14px;}
+.pack-card{background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-md);padding:13px 14px;}
+.pack-name{font-size:12px;font-weight:700;color:var(--tx);margin-bottom:3px;}
+.pack-credits{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--azul);line-height:1;margin-bottom:2px;}
+.pack-price{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--oro2);margin-bottom:8px;}
+.pack-per{font-size:10px;color:var(--tx3);}
+/* EDITOR BOX */
+.editor-box{background:var(--bg3);border:1px solid rgba(201,168,76,.18);border-radius:var(--r-md);padding:16px;margin-bottom:14px;display:none;}
+.editor-box.show{display:block;}
+.editor-title{font-size:13px;font-weight:700;color:var(--oro2);margin-bottom:12px;}
+.editor-actions{display:flex;gap:7px;margin-top:12px;}
+
+::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px;}
+
+/* FB CONFIG BANNER */
+.fb-config-banner{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.2);border-radius:var(--r-md);padding:14px 16px;margin-bottom:14px;display:none;}
+.fb-config-banner.show{display:block;}
+.fb-config-banner h4{font-size:13px;font-weight:700;color:var(--rojo);margin-bottom:6px;}
+.fb-config-banner p{font-size:12px;color:var(--tx2);line-height:1.6;}
+.fb-config-banner code{background:var(--bg4);border:1px solid var(--line2);border-radius:4px;padding:1px 6px;font-family:var(--mono);font-size:11px;color:var(--oro2);}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginScreen">
+  <div class="lcard">
+    <div class="llogo" id="loginLogo">
+      <img src="" id="loginLogoImg" alt="" style="width:100%;height:100%;object-fit:cover;display:none">
+      <div id="loginLogoFallback" style="width:100%;height:100%;background:linear-gradient(135deg,var(--oro),var(--oro2));display:flex;align-items:center;justify-content:center">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#0A0A0F" stroke-width="2.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+    </div>
+    <div class="ltitle" id="loginTitle">Señales VIP</div>
+    <div class="lsub">Panel Administrativo</div>
+    <div class="lfb-status load" id="fbStatus">
+      <div class="lfb-dot"></div>
+      <span id="fbStatusText">Conectando con Firebase...</span>
+    </div>
+    <div class="llabel">PIN de acceso</div>
+    <input class="lpin" id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="000000"
+      oninput="this.value=this.value.slice(0,6);if(this.value.length===6)doLogin();"
+      onkeyup="if(event.key==='Enter')doLogin();">
+    <button class="lbtn" onclick="doLogin()">Ingresar</button>
+    <div class="lerr" id="loginErr">PIN incorrecto.</div>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header>
+  <div class="hbrand">
+    <div class="hlogo" id="headerLogo">
+      <img src="" id="headerLogoImg" alt="" style="width:100%;height:100%;object-fit:cover;display:none">
+      <div id="headerLogoFallback" style="width:34px;height:34px;background:linear-gradient(135deg,var(--oro),var(--oro2));border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#0A0A0F" stroke-width="2.5" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+    </div>
+    <div>
+      <div class="hname" id="headerName">Señales VIP</div>
+      <div class="hsub">Panel Admin</div>
+    </div>
+  </div>
+  <div class="fb-badge" id="fbBadge">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+    Firebase
+  </div>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" data-tab="codigos" onclick="showTab('codigos',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>Códigos
+  </div>
+  <div class="tab" data-tab="planes" onclick="showTab('planes',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>Planes
+  </div>
+  
+  <div class="tab" data-tab="creditos" onclick="showTab('creditos',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Créditos
+  </div>
+  <div class="tab" data-tab="ticker" onclick="showTab('ticker',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Ticker & Picks
+  </div>
+  <div class="tab" data-tab="ligas" onclick="showTab('ligas',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Ligas
+  </div>
+  <div class="tab" data-tab="encuestas" onclick="showTab('encuestas',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Encuestas
+  </div>
+  <div class="tab" data-tab="config" onclick="showTab('config',this)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>Config
+  </div>
+</div>
+
+<!-- TAB: CODIGOS -->
+<div id="tab-codigos" class="panel active">
+<div class="main">
+  <div class="fb-config-banner" id="fbBanner">
+    <h4>⚠️ Firebase no configurado</h4>
+    <p>Ve a la pestaña <strong>Config → Firebase</strong> e ingresa los datos de tu proyecto. Sin esto los códigos no se guardan en la nube.</p>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-n c-o" id="kT">0</div><div class="kpi-l">Total</div></div>
+    <div class="kpi"><div class="kpi-n c-g" id="kA">0</div><div class="kpi-l">Activos</div></div>
+    <div class="kpi"><div class="kpi-n c-r" id="kE">0</div><div class="kpi-l">Expirados</div></div>
+    <div class="kpi"><div class="kpi-n c-gr" id="kR">0</div><div class="kpi-l">Revocados</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Generar código de acceso</div>
+    <div class="frow frow-3" style="margin-bottom:10px">
+      <div class="fg"><label>Nombre del cliente</label><input id="fName" placeholder="Carlos Rodríguez"></div>
+      <div class="fg"><label>WhatsApp</label><input id="fWA" placeholder="+57 300 000 0000"></div>
+      <div class="fg"><label>Nota interna</label><input id="fNote" placeholder="Pago Nequi #123"></div>
+    </div>
+    <div class="frow frow-3" style="margin-bottom:14px">
+      <div class="fg"><label>Créditos (9999=ilimitado)</label><input id="fCredits" type="number" placeholder="60" min="1"></div>
+      <div class="fg"><label>Días de vigencia (0=sin límite)</label><input id="fDays" type="number" placeholder="30" min="0"></div>
+      <div class="fg"><label>Plan</label>
+        <div style="display:flex;gap:6px">
+          <select id="fPlanSelect" onchange="applyPlanGen()" style="flex:1;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:9px 11px;outline:none">
+            <option value="">— Elige un plan —</option>
+            <option value="basico">Básico — $49.900</option>
+            <option value="pro" selected>Pro — $99.900</option>
+            <option value="vip">VIP — $179.900</option>
+          </select>
+          <input id="fPlanManual" placeholder="O escribe plan" style="flex:1;background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:9px 11px;outline:none">
+        </div>
+      </div>
+    </div>
+    <button class="btn-primary" onclick="generateCode()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Generar código
+    </button>
+    <div class="code-box" id="codeBox">
+      <div class="code-val" id="codeVal">00000000</div>
+      <div class="code-info" id="codeInfo">—</div>
+      <div class="code-btns">
+        <button class="code-copy" onclick="copyCode()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copiar</button>
+        <a class="code-wa" id="waLink" href="#" target="_blank"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:13px;height:13px"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="padding:0;overflow:hidden">
+    <div style="padding:13px 17px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between">
+      <div style="font-size:13px;font-weight:700">Códigos en Firestore</div>
+      <button class="btn-sm" onclick="loadCodes()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:11px;height:11px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.1"/></svg>Actualizar</button>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Código</th><th>Cliente</th><th>Plan</th><th>Créditos</th><th>Vence</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="codesBody"><tr><td colspan="7" class="tbl-empty">Cargando...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- TAB: PLANES -->
+
+
+
+<!-- ═══ TAB: CRÉDITOS ═══ -->
+
+<!-- TAB: PLANES -->
+<div id="tab-planes" class="panel">
+<div class="main">
+  <div class="card">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Planes de suscripción
+      <button class="btn-save" style="margin-left:auto" onclick="showPlanEditor(-1)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nuevo plan
+      </button>
+    </div>
+    <div class="editor-box" id="planEditor">
+      <div class="editor-title" id="planEditorTitle">Nuevo plan</div>
+      <div class="frow frow-3" style="margin-bottom:10px">
+        <div class="fg"><label>Nombre</label><input id="peName" placeholder="Pro"></div>
+        <div class="fg"><label>Precio</label><input id="pePrice" placeholder="$99.900/mes"></div>
+        <div class="fg"><label>Etiqueta</label><input id="peBadge" placeholder="Más popular"></div>
+      </div>
+      <div class="frow frow-3" style="margin-bottom:10px">
+        <div class="fg"><label>Créditos (9999=ilimitado)</label><input id="peCredits" type="number" placeholder="60" min="1"></div>
+        <div class="fg"><label>Días (0=sin límite)</label><input id="peDays" type="number" placeholder="30" min="0"></div>
+        <div class="fg"><label>Color</label>
+          <select id="peColor">
+            <option value="azul">Azul</option>
+            <option value="purp" selected>Púrpura</option>
+            <option value="oro">Dorado VIP</option>
+            <option value="verde">Verde</option>
+          </select>
+        </div>
+      </div>
+      <div class="fg" style="margin-bottom:10px"><label>Beneficios (uno por línea)</label><textarea id="peDesc" rows="3" placeholder="60 análisis por mes&#10;Value bets identificados"></textarea></div>
+      <div class="editor-actions">
+        <button class="btn-save" onclick="savePlan()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar</button>
+        <button class="btn-sm" onclick="closePlanEditor()">Cancelar</button>
+      </div>
+    </div>
+    <div class="plans-grid" id="plansGrid"></div>
+  </div>
+</div>
+</div>
+
+<div id="tab-creditos" class="panel">
+<div class="main">
+  <div class="card">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      Paquetes de créditos extra
+      <button class="btn-save" style="margin-left:auto" onclick="showPackEditor(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nuevo paquete</button>
+    </div>
+    <div class="card-sub">Vende créditos adicionales a clientes que agotaron su plan.</div>
+    <div class="editor-box" id="packEditor">
+      <div class="editor-title" id="packEditorTitle">Nuevo paquete</div>
+      <div class="frow frow-3" style="margin-bottom:10px">
+        <div class="fg"><label>Nombre</label><input id="pkName" placeholder="Pack Estándar"></div>
+        <div class="fg"><label>Créditos</label><input id="pkCredits" type="number" placeholder="30" min="1"></div>
+        <div class="fg"><label>Precio</label><input id="pkPrice" placeholder="$29.900"></div>
+      </div>
+      <div class="editor-actions">
+        <button class="btn-save" onclick="savePack()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar</button>
+        <button class="btn-sm" onclick="closePackEditor()">Cancelar</button>
+      </div>
+    </div>
+    <div class="packs-grid" id="packsGrid"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      Agregar créditos a cliente
+    </div>
+    <div class="frow frow-3" style="margin-bottom:12px">
+      <div class="fg"><label>Código del cliente</label><input id="acCode" placeholder="12345678" oninput="lookupClient()"></div>
+      <div class="fg"><label>Cliente</label><input id="acName" readonly placeholder="—" style="color:var(--tx2)"></div>
+      <div class="fg"><label>Créditos actuales</label><input id="acCurrent" readonly placeholder="—" style="color:var(--azul);font-family:var(--mono)"></div>
+    </div>
+    <div class="frow frow-2" style="margin-bottom:12px">
+      <div class="fg"><label>Paquete</label><select id="acPackSelect" onchange="applyPack()"><option value="">— Elegir paquete —</option></select></div>
+      <div class="fg"><label>Cantidad de créditos (manual)</label><input id="acAmount" type="number" placeholder="Ej: 30" min="1"></div>
+    </div>
+    <button class="btn-primary" onclick="addCreditsToClient()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar créditos</button>
+  </div>
+</div>
+</div>
+
+
+
+<!-- TAB: TICKER & PICKS -->
+<div id="tab-ticker" class="panel">
+<div class="main">
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Cinta informativa (Ticker)</div>
+    <div class="ticker-preview"><div class="tp-inner" id="tickerPreview">Preview del ticker...</div></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--tx2)">Mensajes personalizados</div>
+      <button class="btn-oro" onclick="addTickerItem()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:11px;height:11px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar</button>
+    </div>
+    <div class="ticker-items-list" id="tickerItemsList"></div>
+    <button class="btn-save" onclick="saveTicker()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar en Firestore</button>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>Picks del día</div>
+    <div class="pick-config" id="pickConfig"></div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button class="btn-oro" onclick="addPick()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:11px;height:11px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar pick</button>
+      <button class="btn-save" onclick="savePicks()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar en Firestore</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- TAB: LIGAS -->
+<div id="tab-ligas" class="panel">
+<div class="main">
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/></svg>Ligas habilitadas en la app del cliente
+      <div style="display:flex;gap:6px;margin-left:auto">
+        <button class="btn-sm" onclick="toggleAll(true)">Activar todas</button>
+        <button class="btn-sm" onclick="toggleAll(false)">Desactivar</button>
+      </div>
+    </div>
+    <div class="leagues-grid" id="leaguesGrid"></div>
+    <button class="btn-save" onclick="saveLeagues()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar en Firestore</button>
+  </div>
+</div>
+</div>
+
+<!-- TAB: ENCUESTAS -->
+<div id="tab-encuestas" class="panel">
+<div class="main">
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Nueva encuesta</div>
+    <div class="frow frow-2" style="margin-bottom:10px">
+      <div class="fg"><label>Fecha</label><input type="date" id="encFecha"></div>
+      <div class="fg"><label>Estado</label><select id="encActiva"><option value="1">Activa</option><option value="0">Inactiva</option></select></div>
+    </div>
+    <div class="fg" style="margin-bottom:10px"><label>Pregunta</label><input id="encPregunta" placeholder="¿Quién ganará Colombia vs Ecuador?"></div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:11px;color:var(--tx2);margin-bottom:6px">Opciones (2 a 4)</div>
+      <div style="display:flex;flex-direction:column;gap:5px" id="encOpts">
+        <input class="enc-opt-inp" placeholder="Opción 1" style="background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 11px;outline:none;font-family:Inter,sans-serif">
+        <input class="enc-opt-inp" placeholder="Opción 2" style="background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 11px;outline:none;font-family:Inter,sans-serif">
+        <input class="enc-opt-inp" placeholder="Opción 3 (opcional)" style="background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 11px;outline:none;font-family:Inter,sans-serif">
+      </div>
+      <button class="btn-sm" style="margin-top:6px" onclick="addEncOpt()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" style="width:11px;height:11px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Agregar opción</button>
+    </div>
+    <button class="btn-primary" onclick="crearEncuesta()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Publicar encuesta</button>
+  </div>
+  <div class="kpis">
+    <div class="kpi"><div class="kpi-n c-o" id="eKTot">0</div><div class="kpi-l">Total</div></div>
+    <div class="kpi"><div class="kpi-n c-g" id="eKRes">0</div><div class="kpi-l">Con resultado</div></div>
+    <div class="kpi"><div class="kpi-n c-o" id="eKPct">—</div><div class="kpi-l">% mayoría acertó</div></div>
+    <div class="kpi"><div class="kpi-n c-gr" id="eKVotos">0</div><div class="kpi-l">Votos totales</div></div>
+  </div>
+  <div id="encuestasList" style="display:flex;flex-direction:column;gap:8px"></div>
+</div>
+</div>
+
+<!-- TAB: CONFIG -->
+<div id="tab-config" class="panel">
+<div class="main">
+  <div class="card" style="border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.03)">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>Configuración Firebase</div>
+    <div class="card-sub" style="color:var(--rojo);opacity:.85">Ingresa los datos de tu proyecto en <strong>Firebase Console → Configuración del proyecto → Tus apps → SDK de Firebase</strong>. Después de guardar, recarga la página.</div>
+    <div class="frow frow-2" style="margin-bottom:10px">
+      <div class="fg"><label>API Key</label><input id="fbApiKey" placeholder="AIzaSy..."></div>
+      <div class="fg"><label>Project ID</label><input id="fbProjectId" placeholder="mi-proyecto-12345"></div>
+    </div>
+    <div class="frow frow-2" style="margin-bottom:10px">
+      <div class="fg"><label>App ID</label><input id="fbAppId" placeholder="1:123456789:web:abc..."></div>
+      <div class="fg"><label>Messaging Sender ID</label><input id="fbSenderId" placeholder="123456789"></div>
+    </div>
+    <button class="btn-save" onclick="saveFirebaseConfig()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar y recargar</button>
+    <div style="margin-top:10px;font-size:11px;color:var(--tx3);line-height:1.7">
+      La config se guarda en <code style="background:var(--bg3);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:10px">localStorage</code> de este navegador. El archivo HTML no cambia — puedes compartirlo libremente.
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>Motor de IA</div>
+    <div class="prov-grid">
+      <div class="prov-card active" id="prov_anthropic" onclick="selectProv('anthropic')"><div class="prov-name">Claude (Anthropic)</div><div class="prov-sub">claude-sonnet-4-6</div></div>
+      <div class="prov-card" id="prov_openai" onclick="selectProv('openai')"><div class="prov-name">ChatGPT (OpenAI)</div><div class="prov-sub">gpt-4o</div></div>
+    </div>
+    <div id="keyBlock_ant">
+      <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">API Key Anthropic</div>
+      <div class="apikey-row"><input class="apikey-field" type="password" id="antKey" placeholder="sk-ant-api03-..."><button class="eye-btn" onclick="toggleEye('antKey','eyeA')"><svg id="eyeA" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      <button class="btn-save" onclick="saveAIConfig()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar en Firestore</button>
+    </div>
+    <div id="keyBlock_oai" style="display:none">
+      <div style="font-size:11px;color:var(--tx2);margin-bottom:5px">API Key OpenAI</div>
+      <div class="apikey-row"><input class="apikey-field" type="password" id="oaiKey" placeholder="sk-proj-..."><button class="eye-btn" onclick="toggleEye('oaiKey','eyeO')"><svg id="eyeO" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button></div>
+      <button class="btn-save" onclick="saveAIConfig()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar en Firestore</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>Marca y logo</div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="fg" style="flex:1"><label>Nombre de la plataforma</label><input id="fBrand" placeholder="Señales VIP"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn-save" onclick="saveBrand()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Guardar</button></div>
+    </div>
+    <div style="font-size:11px;color:var(--tx2);margin-bottom:6px">Logo (se guarda en Firestore)</div>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div id="logoPrev" style="width:64px;height:64px;border-radius:var(--r-md);overflow:hidden;background:var(--bg3);border:2px dashed var(--line2);cursor:pointer;flex-shrink:0" onclick="document.getElementById('logoFile').click()">
+        <img id="logoImg" src="" alt="" style="width:100%;height:100%;object-fit:cover;display:none">
+        <div id="logoFallback" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:var(--tx3);font-size:22px">+</div>
+      </div>
+      <div><button class="btn-save" onclick="document.getElementById('logoFile').click()">Subir logo</button></div>
+    </div>
+    <input type="file" id="logoFile" accept="image/*" style="display:none" onchange="uploadLogo(event)">
+  </div>
+  <div class="card">
+    <div class="card-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>PIN de administrador</div>
+    <div class="frow frow-2" style="margin-bottom:10px">
+      <div class="fg"><label>PIN actual</label><input id="pinOld" type="password" inputmode="numeric" maxlength="6" placeholder="PIN actual"></div>
+      <div class="fg"><label>PIN nuevo (6 dígitos)</label><input id="pinNew" type="password" inputmode="numeric" maxlength="6" placeholder="Nuevo PIN"></div>
+    </div>
+    <button class="btn-save" onclick="changePin()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>Cambiar PIN</button>
+  </div>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ════ PIN ════
+var DEFAULT_PIN='240810';
+function getPin(){ return localStorage.getItem('svip_pin')||DEFAULT_PIN; }
+
+// ════ FIREBASE CONFIG en localStorage ════
+function getFbConfig(){
+  try{ return JSON.parse(localStorage.getItem('svip_firebase_config')||'null'); }catch(e){ return null; }
+}
+function saveFbConfig(cfg){ localStorage.setItem('svip_firebase_config',JSON.stringify(cfg)); }
+
+// ════ DB READY ════
+var dbReady=false;
+window.addEventListener('db-ready',function(){
+  dbReady=true;
+  var s=document.getElementById('fbStatus');
+  s.className='lfb-status ok';
+  s.innerHTML='<div class="lfb-dot"></div><span>Firebase conectado ✓</span>';
+  document.getElementById('fbBadge').className='fb-badge ok';
+  document.getElementById('fbBadge').innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:10px;height:10px"><polyline points="20 6 9 17 4 12"/></svg>Firebase OK';
+  // Auto-load data now that DB is ready
+  loadCodes();
+});
+// Handle DB not available
+setTimeout(function(){
+  if(typeof window.DB==='undefined'){
+    var s=document.getElementById('fbStatus');
+    s.className='lfb-status err';
+    s.innerHTML='<div class="lfb-dot"></div><span>Sin Firebase — recarga la página</span>';
+    document.getElementById('fbBanner').classList.add('show');
+  }
+},8000);
+
+// ════ LOGIN ════
+function doLogin(){
+  var val=(document.getElementById('pinInput').value||'').trim();
+  if(val===getPin()){
+    document.getElementById('loginScreen').style.display='none';
+    // Give Firebase a moment to connect, then init
+    setTimeout(function(){ initAdmin(); }, 300);
+  } else {
+    var e=document.getElementById('loginErr');
+    e.style.display='block';
+    document.getElementById('pinInput').value='';
+    setTimeout(function(){e.style.display='none';},3000);
+  }
+}
+
+// ════ INIT ════
+async function initAdmin(){
+  // Load brand from Firestore
+  if(typeof window.DB!=='undefined'){
+    try{
+      var brand=await window.DB.getConfig('brand');
+      if(brand){ document.getElementById('headerName').textContent=brand; document.getElementById('fBrand').value=brand; }
+      var logo=await window.DB.getConfig('logo');
+      if(logo) applyLogo(logo);
+      var prov=await window.DB.getConfig('ai_provider')||'anthropic';
+      selectProv(prov,true);
+      var antK=await window.DB.getConfig('ai_key_ant')||'';
+      var oaiK=await window.DB.getConfig('ai_key_oai')||'';
+      if(antK) document.getElementById('antKey').value=antK;
+      if(oaiK) document.getElementById('oaiKey').value=oaiK;
+    } catch(eConf){}
+  }
+  // Load Firebase config fields
+  var fc=getFbConfig();
+  if(fc){
+    document.getElementById('fbApiKey').value=fc.apiKey||'';
+    document.getElementById('fbProjectId').value=fc.projectId||'';
+    document.getElementById('fbAppId').value=fc.appId||'';
+    document.getElementById('fbSenderId').value=fc.messagingSenderId||'';
+  }
+  await loadCodes();
+  renderPlans(); renderPacks(); populatePlanSelect(); populatePackSelect();
+  renderLeagues();
+  if(typeof window.DB!=='undefined'){ await loadTickerFromDB(); await loadPicksFromDB(); await loadEncuestas(); }
+  document.getElementById('encFecha').value=new Date().toISOString().slice(0,10);
+}
+
+// ════ TABS ════
+function showTab(name,btn){
+  document.querySelectorAll('.panel,.tab').forEach(function(e){e.classList.remove('active');});
+  document.getElementById('tab-'+name).classList.add('active');
+  (btn||document.querySelector('[data-tab="'+name+'"]')).classList.add('active');
+}
+
+// ════ CODES ════
+async function generateCode(){
+  var name=document.getElementById('fName').value.trim();
+  var wa=document.getElementById('fWA').value.trim();
+  var note=document.getElementById('fNote').value.trim();
+  var credits=parseInt(document.getElementById('fCredits').value)||60;
+  var days=parseInt(document.getElementById('fDays').value)||30;
+  var planSel=document.getElementById('fPlanSelect').value;
+  var planManual=(document.getElementById('fPlanManual').value||'').trim();
+  var plan=planManual||planSel||'pro';
+  var brand=document.getElementById('headerName').textContent||'Señales VIP';
+  if(!name){toast('Ingresa el nombre del cliente');return;}
+  var chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var code='';
+  for(var ci=0;ci<8;ci++) code+=chars[Math.floor(Math.random()*chars.length)];
+  var now=new Date();
+  var maxExpires=days>0?new Date(now.getTime()+days*86400000).toISOString():null;
+  var entry={code,name,wa,note,plan,credits,creditsUsed:0,days,expiresAfterUse:days,maxExpires,activatedAt:null,expires:null,deviceId:null,uses:0,status:'active',singleDevice:true,createdAt:now.toISOString()};
+  if(typeof window.DB !== 'undefined' && window.DB.saveCode){
+    try{ 
+      await window.DB.saveCode(code,entry); 
+      toast('Código guardado en Firestore ✓'); 
+    }
+    catch(e){ 
+      var msg=e.message||'';
+      if(msg.indexOf('permission')>-1||msg.indexOf('PERMISSION')>-1){
+        toast('Error: Reglas de Firestore. Ve a Firestore → Reglas y verifica que permiten escritura.','e');
+      } else {
+        toast('Error: '+msg,'e');
+      }
+      console.error('Firestore error:', e);
+      return; 
+    }
+  } else {
+    var codes=getLocalCodes(); codes.unshift(entry); saveLocalCodes(codes);
+    toast('Guardado localmente (Firebase no conectado)');
+  }
+  await loadCodes();
+  var credLbl=credits===9999?'Ilimitadas':String(credits);
+  var expLbl=maxExpires?new Date(maxExpires).toLocaleDateString('es-CO',{day:'2-digit',month:'long',year:'numeric'}):'Sin expiración';
+  document.getElementById('codeBox').classList.add('show');
+  document.getElementById('codeVal').textContent=code;
+  document.getElementById('codeInfo').innerHTML='Cliente: <strong>'+name+'</strong><br>'+(wa?'WhatsApp: <strong>'+wa+'</strong><br>':'')+'Plan: <strong>'+plan.charAt(0).toUpperCase()+plan.slice(1)+'</strong><br>Consultas: <strong>'+credLbl+'</strong><br>Vigencia: <strong>'+days+' días desde activación</strong><br>Vence máx: <strong>'+expLbl+'</strong>'+(note?'<br>Nota: '+note:'');
+  var waNum=wa.replace(/\D/g,'');
+  var msg=encodeURIComponent('*'+brand+' — Acceso activado*\n\nHola '+name+', tu acceso está listo.\n\n*Código: '+code+'*\n\nPlan: '+plan+'\nConsultas: '+credLbl+'\nVálido: '+days+' días desde la primera activación\n\n⚠️ _Código personal e intransferible._\n_Solo funciona en el dispositivo donde lo actives._\n_+18 · Solo informativo · Las apuestas implican riesgo_');
+  document.getElementById('waLink').href='https://wa.me/'+waNum+'?text='+msg;
+}
+
+function applyPlanGen(){
+  var sel=document.getElementById('fPlanSelect');
+  var manual=document.getElementById('fPlanManual');
+  if(sel.value) manual.value='';
+}
+function getLocalCodes(){ try{return JSON.parse(localStorage.getItem('svip_codes_v2')||'[]');}catch(e){return[];} }
+function saveLocalCodes(d){ localStorage.setItem('svip_codes_v2',JSON.stringify(d)); }
+
+async function loadCodes(){
+  var codes=[];
+  if(typeof window.DB!=='undefined'){
+    try{ codes=await window.DB.getAllCodes(); }catch(e){ codes=getLocalCodes(); }
+  } else { codes=getLocalCodes(); }
+  renderCodes(codes);
+}
+
+function getStatus(e){
+  if(e.status==='revoked') return 'revoked';
+  if(e.expires&&new Date(e.expires)<new Date()) return 'expired';
+  if(e.maxExpires&&new Date(e.maxExpires)<new Date()) return 'expired';
+  return 'active';
+}
+function renderCodes(codes){
+  var kT=codes.length,kA=0,kE=0,kR=0;
+  var rows=codes.map(function(e){
+    var st=getStatus(e);
+    if(st==='active')kA++; else if(st==='expired')kE++; else kR++;
+    var dc=st==='active'?'sd-a':st==='expired'?'sd-e':'sd-r';
+    var sl=st==='active'?'Activo':st==='expired'?'Expirado':'Revocado';
+    var cr=e.credits===9999?'∞':((e.credits||0)-(e.creditsUsed||0))+'/'+e.credits;
+    var exp=e.maxExpires?new Date(e.maxExpires).toLocaleDateString('es-CO',{day:'2-digit',month:'2-digit',year:'2-digit'}):'∞';
+    return '<tr><td><span class="code-chip">'+e.code+'</span></td>'
+      +'<td style="font-weight:600">'+e.name+'</td>'
+      +'<td><span style="font-size:11px;color:var(--tx2)">'+(e.plan||'—')+'</span></td>'
+      +'<td style="font-family:var(--mono);color:var(--azul)">'+cr+'</td>'
+      +'<td style="font-family:var(--mono);font-size:10px;color:var(--tx2)">'+exp+'</td>'
+      +'<td><div class="st-row"><div class="sdot '+dc+'"></div><span style="color:'+(st==='active'?'var(--verde)':st==='expired'?'var(--rojo)':'var(--tx3)')+'">'+sl+'</span></div></td>'
+      +'<td style="white-space:nowrap">'
+      +(st==='active'?'<button class="revoke-btn" onclick="revokeCode(\''+e.code+'\')">Revocar</button> <button class="add-credit-btn" onclick="addCredit(\''+e.code+'\')">+Créditos</button>':'')
+      +' <button onclick="deleteCode(\''+e.code+'\',\''+e.name+'\')"  style="background:transparent;border:1px solid rgba(239,68,68,.35);color:var(--rojo);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px;cursor:pointer;font-family:Inter,sans-serif">Eliminar</button>'
+      +'</td></tr>';
+  }).join('');
+  document.getElementById('codesBody').innerHTML=rows||'<tr><td colspan="7" class="tbl-empty">Sin códigos aún</td></tr>';
+  document.getElementById('kT').textContent=kT;
+  document.getElementById('kA').textContent=kA;
+  document.getElementById('kE').textContent=kE;
+  document.getElementById('kR').textContent=kR;
+}
+async function revokeCode(code){
+  if(!confirm('¿Revocar código '+code+'?'))return;
+  if(typeof window.DB!=='undefined') await window.DB.updateCode(code,{status:'revoked'});
+  else{ var c=getLocalCodes(); var e=c.find(function(x){return x.code===code;}); if(e){e.status='revoked';saveLocalCodes(c);} }
+  await loadCodes(); toast('Revocado: '+code);
+}
+async function deleteCode(code,name){
+  if(!confirm('¿Eliminar el código '+code+(name?' de '+name:'')+' permanentemente?'))return;
+  if(typeof window.DB!=='undefined'){
+    try{
+      await window.DB.deleteCode(code);
+      toast('Código '+code+' eliminado');
+    }catch(e){ toast('Error eliminando: '+e.message,'e'); return; }
+  } else {
+    var codes=getLocalCodes().filter(function(c){return c.code!==code;});
+    saveLocalCodes(codes);
+    toast('Código '+code+' eliminado');
+  }
+  await loadCodes();
+}
+async function addCredit(code){
+  var n=parseInt(prompt('¿Cuántos créditos agregar a '+code+'?'));
+  if(!n||isNaN(n))return;
+  if(typeof window.DB!=='undefined'){
+    var codes=await window.DB.getAllCodes();
+    var e=codes.find(function(x){return x.code===code;});
+    if(e&&e.credits!==9999) await window.DB.updateCode(code,{credits:(e.credits||0)+n});
+  } else {
+    var c=getLocalCodes(); var e=c.find(function(x){return x.code===code;});
+    if(e&&e.credits!==9999){e.credits=(e.credits||0)+n;saveLocalCodes(c);}
+  }
+  await loadCodes(); toast('+'+n+' créditos a '+code);
+}
+function copyCode(){ navigator.clipboard.writeText(document.getElementById('codeVal').textContent).then(function(){toast('Copiado');}); }
+
+// ════ PLANES ════
+async function savePlan(){
+  var name=document.getElementById('plName').value.trim();
+  var price=document.getElementById('plPrice').value.trim();
+  var credits=parseInt(document.getElementById('plCredits').value)||60;
+  var desc=document.getElementById('plDesc').value.trim();
+  if(!name||!price){toast('Completa nombre y precio');return;}
+  if(typeof window.DB!=='undefined'){
+    var plans=await window.DB.getConfig('plans')||[];
+    plans.push({id:Date.now(),name,price,credits,desc});
+    await window.DB.setConfig('plans',plans);
+    toast('Plan guardado en Firestore');
+    renderPlanesList(plans);
+  } else { toast('Firebase no conectado','e'); }
+}
+async function renderPlanesList(plans){
+  if(!plans&&typeof window.DB!=='undefined') plans=await window.DB.getConfig('plans')||[];
+  if(!plans) return;
+  document.getElementById('planesList').innerHTML=plans.map(function(p,i){
+    return '<div style="background:var(--bg3);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;display:flex;align-items:center;justify-content:space-between">'
+      +'<div><b style="color:var(--tx)">'+(p.name||'')+'</b> — <span style="color:var(--oro2)">'+(p.price||'')+'</span> · '+(p.credits===9999?'∞':p.credits)+' consultas</div>'
+      +'<button class="btn-danger" onclick="deletePlan('+i+')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+      +'</div>';
+  }).join('');
+}
+async function deletePlan(i){
+  if(!confirm('¿Eliminar plan?'))return;
+  var plans=await window.DB.getConfig('plans')||[];
+  plans.splice(i,1); await window.DB.setConfig('plans',plans);
+  renderPlanesList(plans); toast('Eliminado');
+}
+
+// ════ TICKER ════
+var _ticker=[];
+async function loadTickerFromDB(){ _ticker=await window.DB.getTicker(); renderTickerItems(); updateTickerPreview(); }
+function renderTickerItems(){
+  document.getElementById('tickerItemsList').innerHTML=_ticker.map(function(item,i){
+    return '<div class="ticker-item-row">'
+      +'<div class="ti-type"><select onchange="_ticker['+i+'].type=this.value;updateTickerPreview()">'
+      +'<option value="" '+(item.type===''?'selected':'')+'>Normal</option>'
+      +'<option value="hot" '+(item.type==='hot'?'selected':'')+'>Hot</option>'
+      +'<option value="live" '+(item.type==='live'?'selected':'')+'>Live</option>'
+      +'<option value="alert" '+(item.type==='alert'?'selected':'')+'>Alerta</option>'
+      +'</select></div>'
+      +'<input class="ti-text" value="'+esc(item.text)+'" oninput="_ticker['+i+'].text=this.value;updateTickerPreview()" placeholder="Mensaje...">'
+      +'<label class="toggle-sw"><input type="checkbox" '+(item.enabled?'checked':'')+' onchange="_ticker['+i+'].enabled=this.checked"><div class="sw-track"></div><div class="sw-knob"></div></label>'
+      +'<button class="ti-del" onclick="_ticker.splice('+i+',1);renderTickerItems();updateTickerPreview()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+      +'</div>';
+  }).join('');
+}
+function addTickerItem(){ _ticker.push({text:'Nuevo mensaje',type:'',enabled:true}); renderTickerItems(); updateTickerPreview(); }
+function updateTickerPreview(){
+  var t=_ticker.filter(function(i){return i.enabled;}).map(function(i){return '  ·  '+i.text;}).join('')||'  Sin mensajes activos';
+  document.getElementById('tickerPreview').textContent=t+t;
+}
+async function saveTicker(){
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado — configura en la pestaña Config','e');return;}
+  await window.DB.saveTicker(_ticker); toast('Ticker guardado en Firestore');
+}
+
+// ════ PICKS ════
+var _picks=[];
+async function loadPicksFromDB(){ _picks=await window.DB.getPicks(); renderPicks(); }
+function renderPicks(){
+  document.getElementById('pickConfig').innerHTML=_picks.map(function(p,i){
+    return '<div class="pick-row"><div class="pr-num">#'+(i+1)+'</div>'
+      +'<div class="pr-fields">'
+      +'<input value="'+esc(p.partido||'')+'" placeholder="Partido" oninput="_picks['+i+'].partido=this.value">'
+      +'<input value="'+esc(p.mercado||'')+'" placeholder="Mercado" oninput="_picks['+i+'].mercado=this.value">'
+      +'<input value="'+esc(p.confianza||'')+'" placeholder="Confianza" oninput="_picks['+i+'].confianza=this.value">'
+      +'<input value="'+esc(p.sport||'')+'" placeholder="Deporte/Liga" oninput="_picks['+i+'].sport=this.value">'
+      +'<input value="'+esc(p.ev||'')+'" placeholder="EV% (ej: +12.4%)" oninput="_picks['+i+'].ev=this.value">'
+      +'<input value="'+esc(p.query||'')+'" placeholder="Query IA" oninput="_picks['+i+'].query=this.value">'
+      +'</div>'
+      +'<button class="pr-del" onclick="_picks.splice('+i+',1);renderPicks()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>'
+      +'</div>';
+  }).join('');
+}
+function addPick(){ if(_picks.length>=5){toast('Máximo 5 picks');return;} _picks.push({partido:'',mercado:'',sport:'',confianza:'',ev:'',query:''}); renderPicks(); }
+async function savePicks(){
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado — configura en la pestaña Config','e');return;}
+  await window.DB.savePicks(_picks); toast('Picks guardados en Firestore');
+}
+
+// ════ LIGAS ════
+var ALL_LEAGUES=[
+  {id:'soccer/fifa.world',n:'FIFA Mundial 2026'},{id:'soccer/fifa.worldq.conmebol',n:'Eliminatorias CONMEBOL'},{id:'soccer/fifa.worldq.uefa',n:'Eliminatorias UEFA'},{id:'soccer/conmebol.copa_america',n:'Copa América'},{id:'soccer/uefa.champions',n:'Champions League'},{id:'soccer/uefa.europa',n:'Europa League'},{id:'soccer/uefa.europa.conference',n:'Conference League'},{id:'soccer/esp.1',n:'LaLiga'},{id:'soccer/esp.2',n:'LaLiga 2'},{id:'soccer/esp.copa_del_rey',n:'Copa del Rey'},{id:'soccer/eng.1',n:'Premier League'},{id:'soccer/eng.2',n:'Championship'},{id:'soccer/eng.fa',n:'FA Cup'},{id:'soccer/ita.1',n:'Serie A'},{id:'soccer/ita.2',n:'Serie B'},{id:'soccer/ita.coppa_italia',n:'Coppa Italia'},{id:'soccer/ger.1',n:'Bundesliga'},{id:'soccer/ger.2',n:'2. Bundesliga'},{id:'soccer/ger.dfb_pokal',n:'DFB Pokal'},{id:'soccer/fra.1',n:'Ligue 1'},{id:'soccer/fra.2',n:'Ligue 2'},{id:'soccer/por.1',n:'Primeira Liga'},{id:'soccer/ned.1',n:'Eredivisie'},{id:'soccer/bel.1',n:'First Division A'},{id:'soccer/tur.1',n:'Super Lig'},{id:'soccer/sco.1',n:'Scottish Premiership'},{id:'soccer/gre.1',n:'Super League Grecia'},{id:'soccer/aut.1',n:'Bundesliga Austria'},{id:'soccer/sui.1',n:'Super League Suiza'},{id:'soccer/den.1',n:'Superliga Dinamarca'},{id:'soccer/swe.1',n:'Allsvenskan'},{id:'soccer/nor.1',n:'Eliteserien'},{id:'soccer/cze.1',n:'First League Chequia'},{id:'soccer/pol.1',n:'Ekstraklasa'},{id:'soccer/rus.1',n:'Premier League Rusia'},{id:'soccer/conmebol.libertadores',n:'Copa Libertadores'},{id:'soccer/conmebol.sudamericana',n:'Copa Sudamericana'},{id:'soccer/col.1',n:'Liga BetPlay Colombia'},{id:'soccer/col.2',n:'Primera B Colombia'},{id:'soccer/arg.1',n:'Liga Profesional Argentina'},{id:'soccer/arg.2',n:'Primera Nacional'},{id:'soccer/bra.1',n:'Brasileirao Serie A'},{id:'soccer/bra.2',n:'Brasileirao Serie B'},{id:'soccer/bra.cup',n:'Copa do Brasil'},{id:'soccer/chi.1',n:'Primera División Chile'},{id:'soccer/per.1',n:'Liga 1 Perú'},{id:'soccer/ven.1',n:'Liga FUTVE Venezuela'},{id:'soccer/ecu.1',n:'LigaPro Ecuador'},{id:'soccer/bol.1',n:'División Profesional Bolivia'},{id:'soccer/par.1',n:'División Profesional Paraguay'},{id:'soccer/uru.1',n:'Primera División Uruguay'},{id:'soccer/mex.1',n:'Liga MX'},{id:'soccer/mex.2',n:'Liga de Expansión MX'},{id:'soccer/usa.1',n:'MLS'},{id:'soccer/can.1',n:'Canadian Premier League'},{id:'soccer/sau.1',n:'Saudi Pro League'},{id:'soccer/jpn.1',n:'J1 League Japón'},{id:'soccer/chn.1',n:'Super League China'},{id:'soccer/kor.1',n:'K League 1'},{id:'soccer/ind.1',n:'Indian Super League'},{id:'soccer/uae.1',n:'UAE Pro League'},{id:'soccer/qat.1',n:'Qatar Stars League'},{id:'soccer/aus.1',n:'A-League Australia'},{id:'soccer/isr.1',n:'Ligat haAl Israel'},{id:'basketball/nba',n:'NBA'},{id:'basketball/wnba',n:'WNBA'},{id:'basketball/mens-college-basketball',n:'NCAA Basketball'},{id:'tennis/atp',n:'ATP Tour'},{id:'tennis/wta',n:'WTA Tour'},{id:'americanfootball/nfl',n:'NFL'},{id:'americanfootball/college-football',n:'NCAA Football'},{id:'baseball/mlb',n:'MLB'},{id:'hockey/nhl',n:'NHL'},{id:'mma/ufc',n:'UFC'},{id:'mma/bellator',n:'Bellator MMA'},{id:'golf/pga',n:'PGA Tour'},{id:'golf/european',n:'DP World Tour'},{id:'rugby/internationals',n:'Rugby Internacionales'},{id:'rugby/premiership',n:'Premiership Rugby'},{id:'rugby/super-rugby',n:'Super Rugby'},{id:'cricket/ipl',n:'IPL Cricket'}
+];
+var _leagueEnabled={};
+function renderLeagues(){
+  var grid=document.getElementById('leaguesGrid');
+  grid.innerHTML=ALL_LEAGUES.map(function(lg){
+    var on=_leagueEnabled[lg.id]!==false;
+    return '<div class="league-row'+(on?' enabled':'')+'" id="lr-'+lg.id.replace(/[/.]/g,'-')+'">'
+      +'<div class="lr-name">'+lg.n+'</div>'
+      +'<label class="toggle-sw"><input type="checkbox" '+(on?'checked':'')+' onchange="toggleLeague(\''+lg.id+'\',this.checked)"><div class="sw-track"></div><div class="sw-knob"></div></label>'
+      +'</div>';
+  }).join('');
+}
+function toggleLeague(id,val){
+  _leagueEnabled[id]=val;
+  var el=document.getElementById('lr-'+id.replace(/[/.]/g,'-'));
+  if(el){ if(val) el.classList.add('enabled'); else el.classList.remove('enabled'); }
+}
+function toggleAll(val){ ALL_LEAGUES.forEach(function(lg){ _leagueEnabled[lg.id]=val; }); renderLeagues(); }
+async function saveLeagues(){
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado — configura en la pestaña Config','e');return;}
+  var arr=ALL_LEAGUES.map(function(lg){return{id:lg.id,enabled:_leagueEnabled[lg.id]!==false};});
+  await window.DB.saveLeagues(arr); toast('Ligas guardadas en Firestore');
+}
+
+// ════ ENCUESTAS ════
+var _encuestas=[];
+async function loadEncuestas(){
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado','e');return;}
+  _encuestas=await window.DB.getEncuestas();
+  _encuestas.sort(function(a,b){return (b.fecha||'').localeCompare(a.fecha||'');});
+  renderEncuestasList(); calcEncStats();
+}
+function addEncOpt(){
+  var c=document.getElementById('encOpts');
+  if(c.children.length>=4){toast('Máximo 4 opciones');return;}
+  var inp=document.createElement('input');
+  inp.className='enc-opt-inp';
+  inp.placeholder='Opción '+(c.children.length+1);
+  inp.style.cssText='background:var(--bg3);border:1px solid var(--line2);border-radius:var(--r-sm);color:var(--tx);font-size:13px;padding:8px 11px;outline:none;font-family:Inter,sans-serif;width:100%';
+  c.appendChild(inp);
+}
+async function crearEncuesta(){
+  var pregunta=document.getElementById('encPregunta').value.trim();
+  var fecha=document.getElementById('encFecha').value;
+  var activa=document.getElementById('encActiva').value==='1';
+  if(!pregunta){toast('Ingresa la pregunta');return;}
+  if(!fecha){toast('Selecciona una fecha');return;}
+  var opts=Array.from(document.querySelectorAll('.enc-opt-inp')).map(function(i){return i.value.trim();}).filter(Boolean);
+  if(opts.length<2){toast('Agrega al menos 2 opciones');return;}
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado — configura en la pestaña Config','e');return;}
+  var enc={id:'enc-'+Date.now(),pregunta,fecha,activa,opciones:opts,votos:opts.map(function(){return 0;}),resultado:null,creadaEn:new Date().toISOString()};
+  await window.DB.saveEncuesta(enc);
+  document.getElementById('encPregunta').value='';
+  await loadEncuestas();
+  toast('Encuesta publicada en Firestore');
+}
+function renderEncuestasList(){
+  var el=document.getElementById('encuestasList');
+  if(!_encuestas.length){el.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:16px;text-align:center">Sin encuestas aún</div>';return;}
+  el.innerHTML=_encuestas.map(function(enc){
+    var total=(enc.votos||[]).reduce(function(a,b){return a+b;},0)||1;
+    var maxV=Math.max.apply(null,enc.votos||[0]);
+    return '<div class="enc-card">'
+      +'<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px">'
+      +'<div><b style="color:var(--tx);font-size:12px">'+enc.pregunta+'</b>'
+      +'<div style="font-size:10px;color:var(--tx3);margin-top:2px">'+enc.fecha+' · '+(enc.activa?'<span style="color:var(--verde)">Activa</span>':'<span style="color:var(--tx3)">Inactiva</span>')+' · '+total+' votos</div></div>'
+      +'<div style="display:flex;gap:5px"><button class="btn-sm" onclick="toggleEnc(\''+enc.id+'\')">'+( enc.activa?'Ocultar':'Activar')+'</button><button class="btn-danger" onclick="delEnc(\''+enc.id+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:11px;height:11px"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div></div>'
+      +(enc.opciones||[]).map(function(op,i){
+        var pct=Math.round(((enc.votos||[])[i]||0)/total*100);
+        var isRes=enc.resultado===i;
+        var isWin=(enc.votos||[])[i]===maxV;
+        return '<div class="enc-bar-row">'
+          +'<div style="font-size:11px;min-width:100px;color:'+(isRes?'var(--verde)':isWin?'var(--oro2)':'var(--tx2)')+'">'+op+'</div>'
+          +'<div class="enc-bar-outer"><div class="enc-bar-inner'+(isRes?' winner':''+( isWin?'':' '))+'" style="width:'+pct+'%;'+(isRes?'background:var(--verde)':isWin?'background:var(--purp)':'')+'"></div></div>'
+          +'<div style="font-family:var(--mono);font-size:10px;min-width:35px;text-align:right;color:var(--tx2)">'+pct+'%</div>'
+          +'</div>';
+      }).join('')
+      +(enc.resultado===null||enc.resultado===undefined?
+        '<div style="display:flex;gap:5px;margin-top:8px;flex-wrap:wrap"><span style="font-size:10px;color:var(--tx3);align-self:center">Resultado real:</span>'
+        +(enc.opciones||[]).map(function(op,i){return '<button class="btn-save" style="font-size:9px;padding:4px 9px" onclick="setRes(\''+enc.id+'\','+i+')">'+op+'</button>';}).join('')+'</div>'
+        :'<div style="font-size:10px;margin-top:6px">Resultado: <b style="color:var(--verde)">'+(enc.opciones||[])[enc.resultado]+'</b></div>')
+      +'</div>';
+  }).join('');
+}
+function calcEncStats(){
+  document.getElementById('eKTot').textContent=_encuestas.length;
+  var conRes=_encuestas.filter(function(e){return e.resultado!==null&&e.resultado!==undefined;});
+  document.getElementById('eKRes').textContent=conRes.length;
+  var tv=_encuestas.reduce(function(a,e){return a+(e.votos||[]).reduce(function(b,v){return b+v;},0);},0);
+  document.getElementById('eKVotos').textContent=tv.toLocaleString();
+  if(conRes.length){
+    var ok=conRes.filter(function(e){var mv=Math.max.apply(null,e.votos||[0]);return (e.votos||[])[e.resultado]===mv;}).length;
+    document.getElementById('eKPct').textContent=Math.round(ok/conRes.length*100)+'%';
+  } else document.getElementById('eKPct').textContent='—';
+}
+async function toggleEnc(id){
+  var enc=_encuestas.find(function(e){return e.id===id;});
+  if(!enc) return;
+  await window.DB.updateEncuesta(id,{activa:!enc.activa});
+  await loadEncuestas(); toast(enc.activa?'Encuesta ocultada':'Encuesta activada');
+}
+async function delEnc(id){
+  if(!confirm('¿Eliminar encuesta?')) return;
+  await window.DB.deleteEncuesta(id); await loadEncuestas(); toast('Eliminada');
+}
+async function setRes(id,opIdx){
+  await window.DB.updateEncuesta(id,{resultado:opIdx});
+  await loadEncuestas(); toast('Resultado registrado');
+}
+
+// ════ CONFIG ════
+async function saveFirebaseConfig(){
+  var cfg={
+    apiKey:document.getElementById('fbApiKey').value.trim(),
+    projectId:document.getElementById('fbProjectId').value.trim(),
+    appId:document.getElementById('fbAppId').value.trim(),
+    messagingSenderId:document.getElementById('fbSenderId').value.trim(),
+  };
+  if(!cfg.apiKey||!cfg.projectId){toast('Completa API Key y Project ID','e');return;}
+  saveFbConfig(cfg);
+  toast('Configuración guardada — recargando...');
+  setTimeout(function(){window.location.reload();},1500);
+}
+
+var _currentProv='anthropic';
+function selectProv(p,silent){
+  _currentProv=p;
+  ['anthropic','openai'].forEach(function(k){
+    document.getElementById('prov_'+k).className='prov-card'+(k===p?' active':'');
+    document.getElementById('keyBlock_'+(k==='anthropic'?'ant':'oai')).style.display=k===p?'block':'none';
+  });
+  if(!silent) toast('Motor: '+(p==='openai'?'ChatGPT':'Claude'));
+}
+async function saveAIConfig(){
+  if(typeof window.DB==='undefined'){toast('Firebase no conectado — configura en la pestaña Config','e');return;}
+  await window.DB.setConfig('ai_provider',_currentProv);
+  if(_currentProv==='anthropic'){
+    var k=document.getElementById('antKey').value.trim();
+    if(k) await window.DB.setConfig('ai_key_ant',k);
+  } else {
+    var k=document.getElementById('oaiKey').value.trim();
+    if(k) await window.DB.setConfig('ai_key_oai',k);
+  }
+  toast('Config IA guardada en Firestore');
+}
+async function saveBrand(){
+  var name=document.getElementById('fBrand').value.trim()||'Señales VIP';
+  if(typeof window.DB!=='undefined') await window.DB.setConfig('brand',name);
+  document.getElementById('headerName').textContent=name;
+  toast('Nombre guardado');
+}
+function applyLogo(src){
+  ['loginLogoImg','headerLogoImg','logoImg'].forEach(function(id){
+    if(!document.getElementById(id)) return;
+    var el=document.getElementById(id); if(el){el.src=src;el.style.display='block';}
+  });
+  ['loginLogoFallback','headerLogoFallback','logoFallback'].forEach(function(id){
+    if(!document.getElementById(id)) return;
+    var el=document.getElementById(id); if(el) el.style.display='none';
+  });
+}
+async function uploadLogo(e){
+  var file=e.target.files[0]; if(!file) return;
+  var r=new FileReader();
+  r.onload=async function(ev){
+    var src=ev.target.result;
+    applyLogo(src);
+    if(typeof window.DB!=='undefined') await window.DB.setConfig('logo',src);
+    toast('Logo guardado en Firestore');
+  };
+  r.readAsDataURL(file);
+}
+function changePin(){
+  var old=document.getElementById('pinOld').value.trim();
+  var nw=document.getElementById('pinNew').value.trim();
+  if(old!==getPin()){toast('PIN incorrecto','e');return;}
+  if(!/^\d{6}$/.test(nw)){toast('El PIN debe tener 6 dígitos','e');return;}
+  localStorage.setItem('svip_pin',nw);
+  document.getElementById('pinOld').value='';document.getElementById('pinNew').value='';
+  toast('PIN cambiado');
+}
+function toggleEye(fieldId,iconId){
+  var f=document.getElementById(fieldId),i=document.getElementById(iconId);
+  if(!f||!i) return;
+  f.type=f.type==='password'?'text':'password';
+  i.innerHTML=f.type==='text'?'<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>':'<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+}
+
+// ═══ PLANES ═══
+var editingPlanIdx = -1;
+var COLOR_MAP = {
+  azul:{text:'var(--azul)',bg:'rgba(59,130,246,.1)',border:'rgba(59,130,246,.25)'},
+  purp:{text:'var(--purp)',bg:'rgba(139,92,246,.1)',border:'rgba(139,92,246,.25)'},
+  oro:{text:'var(--oro2)',bg:'rgba(201,168,76,.1)',border:'rgba(201,168,76,.25)'},
+  verde:{text:'var(--verde)',bg:'rgba(34,197,94,.08)',border:'rgba(34,197,94,.22)'},
+  cian:{text:'var(--cian)',bg:'rgba(6,182,212,.08)',border:'rgba(6,182,212,.22)'},
+};
+
+// ═══ STORAGE: Planes y Packs ═══
+function loadPlans(){
+  try{ return JSON.parse(localStorage.getItem("svip_plans_v2")||"null")||defaultPlans(); }
+  catch(e){ return defaultPlans(); }
+}
+function savePlans(d){ localStorage.setItem("svip_plans_v2", JSON.stringify(d)); }
+function loadPacks(){
+  try{ return JSON.parse(localStorage.getItem("svip_packs_v2")||"null")||defaultPacks(); }
+  catch(e){ return defaultPacks(); }
+}
+function savePacks(d){ localStorage.setItem("svip_packs_v2", JSON.stringify(d)); }
+
+function defaultPlans(){
+  return [
+    {id:1,name:"Básico",price:"$49.900/mes",credits:30,days:30,color:"azul",badge:"",desc:"30 análisis por mes\nModelo Poisson completo\nH2H básico"},
+    {id:2,name:"Pro",price:"$99.900/mes",credits:60,days:30,color:"purp",badge:"Más popular",desc:"60 análisis por mes\nValue bets identificados\nH2H completo"},
+    {id:3,name:"VIP",price:"$179.900/mes",credits:9999,days:30,color:"oro",badge:"Premium",desc:"Consultas ilimitadas\nAnálisis en tiempo real"},
+  ];
+}
+function defaultPacks(){
+  return [
+    {id:1,name:"Pack Starter",credits:10,price:"$15.900"},
+    {id:2,name:"Pack Estándar",credits:30,price:"$39.900"},
+    {id:3,name:"Pack Premium",credits:60,price:"$69.900"},
+  ];
+}
+
+function renderPlans(){
+  var plans = loadPlans();
+  var grid = document.getElementById('plansGrid');
+  if(!plans.length){ grid.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:10px">Sin planes. Crea el primero.</div>'; return; }
+  grid.innerHTML = plans.map(function(p,i){
+    var c = COLOR_MAP[p.color]||COLOR_MAP.purp;
+    var credLbl = p.credits===9999?'Ilimitadas':p.credits+' consultas';
+    var daysLbl = p.days===0?'Sin expiración':p.days+' días';
+    var descLines = (p.desc||'').split('\n').filter(function(l){ return l.trim(); });
+    return '<div class="plan-card'+(p.badge?' featured':'')+'" style="border-color:'+c.border+';background:'+c.bg+'">'
+      +(p.badge?'<div class="pc-badge pcb-recommended" style="color:'+c.text+'">'+p.badge+'</div>':'')
+      +'<div class="pc-name" style="color:'+c.text+'">'+p.name+'</div>'
+      +'<div class="pc-price">'+p.price+'</div>'
+      +'<div class="pc-detail">'
+      +'<div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'+credLbl+'</div>'
+      +'<div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'+daysLbl+'</div>'
+      +descLines.map(function(l){ return '<div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>'+l+'</div>'; }).join('')
+      +'</div>'
+      +'<div class="pc-actions">'
+      +'<button class="btn-sm" onclick="showPlanEditor('+i+')">Editar</button>'
+      +'<button class="btn-danger" onclick="deletePlan('+i+')" style="margin-left:4px">Eliminar</button>'
+      +'</div></div>';
+  }).join('');
+}
+function showPlanEditor(idx){
+  editingPlanIdx=idx;
+  var plans=loadPlans();
+  var p=idx>=0?plans[idx]:{name:'',price:'',credits:'',days:30,color:'purp',badge:'',desc:''};
+  document.getElementById('planEditorTitle').textContent=idx>=0?'Editar plan':'Nuevo plan';
+  document.getElementById('peName').value=p.name;
+  document.getElementById('pePrice').value=p.price;
+  document.getElementById('peBadge').value=p.badge||'';
+  document.getElementById('peCredits').value=p.credits===9999?'9999':(p.credits||'');
+  document.getElementById('peDays').value=p.days||30;
+  document.getElementById('peColor').value=p.color||'purp';
+  document.getElementById('peDesc').value=p.desc||'';
+  document.getElementById('planEditor').classList.add('show');
+  document.getElementById('peName').focus();
+}
+function closePlanEditor(){ document.getElementById('planEditor').classList.remove('show'); }
+function savePlan(){
+  var name=document.getElementById('peName').value.trim();
+  var price=document.getElementById('pePrice').value.trim();
+  var credits=parseInt(document.getElementById('peCredits').value)||60;
+  var days=parseInt(document.getElementById('peDays').value)||30;
+  var color=document.getElementById('peColor').value;
+  var badge=document.getElementById('peBadge').value.trim();
+  var desc=document.getElementById('peDesc').value.trim();
+  if(!name||!price){ toast('Ingresa nombre y precio'); return; }
+  var plans=loadPlans();
+  var entry={id:Date.now(),name,price,credits,days,color,badge,desc};
+  if(editingPlanIdx>=0){ entry.id=plans[editingPlanIdx].id; plans[editingPlanIdx]=entry; }
+  else plans.push(entry);
+  savePlans(plans); closePlanEditor(); renderPlans(); populatePlanSelect(); syncPlanesToDB();
+  toast('Plan "'+name+'" guardado en Firestore');
+}
+function deletePlan(idx){
+  if(!confirm('¿Eliminar este plan?')) return;
+  var plans=loadPlans(); plans.splice(idx,1); savePlans(plans); renderPlans(); populatePlanSelect();
+  toast('Plan eliminado');
+}
+
+
+// ═══ SYNC PLANES A FIRESTORE ══
+async function syncPlanesToDB(){
+  if(typeof window.DB==='undefined') return;
+  try{ await window.DB.setConfig('planes', loadPlans()); }catch(e){}
+}
+
+
+// ═══ PACKS ═══
+var editingPackIdx=-1;
+function renderPacks(){
+  var packs=loadPacks();
+  var grid=document.getElementById('packsGrid');
+  if(!packs.length){ grid.innerHTML='<div style="color:var(--tx3);font-size:12px;padding:10px">Sin paquetes.</div>'; return; }
+  grid.innerHTML=packs.map(function(p,i){
+    var per=p.credits>0?'$'+Math.round(parseInt((p.price||'0').replace(/\D/g,''))/p.credits).toLocaleString('es-CO'):'—';
+    return '<div class="pack-card">'
+      +'<div class="pack-name">'+p.name+'</div>'
+      +'<div class="pack-credits">'+p.credits+'</div>'
+      +'<div style="font-size:9px;color:var(--tx3);margin-bottom:3px">consultas</div>'
+      +'<div class="pack-price">'+p.price+'</div>'
+      +'<div class="pack-per">'+per+' por consulta</div>'
+      +'<div style="display:flex;gap:5px;margin-top:10px">'
+      +'<button class="btn-sm" onclick="showPackEditor('+i+')" style="font-size:9px;padding:4px 8px">Editar</button>'
+      +'<button class="btn-danger" onclick="deletePack('+i+')" style="font-size:9px;padding:4px 8px">Eliminar</button>'
+      +'</div></div>';
+  }).join('');
+  populatePackSelect();
+}
+function showPackEditor(idx){
+  editingPackIdx=idx;
+  var packs=loadPacks();
+  var p=idx>=0?packs[idx]:{name:'',credits:'',price:''};
+  document.getElementById('packEditorTitle').textContent=idx>=0?'Editar paquete':'Nuevo paquete';
+  document.getElementById('pkName').value=p.name;
+  document.getElementById('pkCredits').value=p.credits;
+  document.getElementById('pkPrice').value=p.price;
+  document.getElementById('packEditor').classList.add('show');
+  document.getElementById('pkName').focus();
+}
+function closePackEditor(){ document.getElementById('packEditor').classList.remove('show'); }
+function savePack(){
+  var name=document.getElementById('pkName').value.trim();
+  var credits=parseInt(document.getElementById('pkCredits').value)||0;
+  var price=document.getElementById('pkPrice').value.trim();
+  if(!name||!credits||!price){ toast('Completa todos los campos'); return; }
+  var packs=loadPacks();
+  var entry={id:Date.now(),name,credits,price};
+  if(editingPackIdx>=0){ entry.id=packs[editingPackIdx].id; packs[editingPackIdx]=entry; }
+  else packs.push(entry);
+  savePacks(packs); closePackEditor(); renderPacks(); populatePackSelect(); syncPacksToDB();
+  toast('Paquete "'+name+'" guardado en Firestore');
+}
+function deletePack(idx){
+  if(!confirm('¿Eliminar este paquete?')) return;
+  var packs=loadPacks(); packs.splice(idx,1); savePacks(packs); renderPacks(); populatePackSelect();
+  toast('Paquete eliminado');
+}
+
+
+// ═══ SYNC PACKS A FIRESTORE ══
+async function syncPacksToDB(){
+  if(typeof window.DB==='undefined') return;
+  try{ await window.DB.setConfig('packs', loadPacks()); }catch(e){}
+}
+
+
+// ═══ SELECTS ═══
+function populatePlanSelect(){
+  var plans=loadPlans();
+  var sel=document.getElementById('fPlanSelect');
+  sel.innerHTML='<option value="">— Elige un plan —</option>'
+    +plans.map(function(p,i){ return '<option value="'+i+'">'+p.name+' — '+p.price+'</option>'; }).join('');
+}
+function applyPlan(){
+  var idx=parseInt(document.getElementById('fPlanSelect').value);
+  if(isNaN(idx)) return;
+  var p=loadPlans()[idx]; if(!p) return;
+  document.getElementById('fCredits').value=p.credits;
+  document.getElementById('fDays').value=p.days;
+  document.getElementById('fPrice').value=p.price;
+}
+function populatePackSelect(){
+  var packs=loadPacks();
+  var sel=document.getElementById('acPackSelect'); if(!sel) return;
+  sel.innerHTML='<option value="">— Elegir paquete —</option>'
+    +packs.map(function(p,i){ return '<option value="'+i+'">'+p.name+' ('+p.credits+') — '+p.price+'</option>'; }).join('');
+}
+function applyPack(){
+  var idx=parseInt(document.getElementById('acPackSelect').value); if(isNaN(idx)) return;
+  var p=loadPacks()[idx]; if(p) document.getElementById('acAmount').value=p.credits;
+}
+
+
+
+
+
+// ════ UTILS ════
+function esc(s){return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function toast(msg,t){
+  var el=document.getElementById('toast');
+  el.textContent=msg;
+  el.style.borderColor=t==='e'?'rgba(239,68,68,.3)':'var(--line2)';
+  el.style.color=t==='e'?'var(--rojo)':'var(--tx)';
+  el.classList.add('show');
+  setTimeout(function(){el.classList.remove('show');},2600);
+}
+window.addEventListener('load',function(){
+  // Load Firebase config from localStorage and pre-fill fields
+  var fc=getFbConfig();
+  if(fc&&fc.apiKey){
+    document.getElementById('fbApiKey').value=fc.apiKey||'';
+    document.getElementById('fbProjectId').value=fc.projectId||'';
+    document.getElementById('fbAppId').value=fc.appId||'';
+    document.getElementById('fbSenderId').value=fc.messagingSenderId||'';
+  }
+  setTimeout(function(){var p=document.getElementById('pinInput');if(p)p.focus();},300);
+  document.getElementById('encFecha').value=new Date().toISOString().slice(0,10);
+});
+</script>
+</body>
+</html>
